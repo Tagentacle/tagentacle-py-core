@@ -94,7 +94,7 @@ class Node:
     async def connect(self):
         """Connect to Tagentacle Daemon bus and register existing subscriptions and services."""
         self.logger.info(f"Connecting to Tagentacle Daemon at {self.host}:{self.port}...")
-        self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+        self.reader, self.writer = await asyncio.open_connection(self.host, self.port, limit=4 * 1024 * 1024)  # 4 MB buffer for large messages
         self._connected = True
         self.logger.info(f"Node '{self.node_id}' connected.")
         
