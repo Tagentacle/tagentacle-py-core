@@ -1,10 +1,11 @@
-"""
+"""  
 Tagentacle Python Core SDK — Node, LifecycleNode, and package utilities.
 
 This is the zero-dependency core of the Tagentacle Python SDK.
 Provides:
   - Node: Lightweight bus client with publish/subscribe/service/call_service.
   - LifecycleNode: Full lifecycle-managed node for Agent development.
+  - SchemaRegistry: Modular JSON Schema validation for topic payloads.
   - Package utilities: load_pkg_toml, discover_packages, find_workspace_root.
 """
 
@@ -15,6 +16,8 @@ import os
 import uuid
 from enum import Enum
 from typing import Callable, Dict, Any, List, Optional
+
+from tagentacle_py_core.schema import SchemaRegistry, SchemaValidationError
 
 
 def _load_secrets_file(path: str) -> Dict[str, str]:
@@ -58,7 +61,7 @@ class Node:
     integration with the Tagentacle bus. No lifecycle management.
     """
 
-    def __init__(self, node_id: str):
+    def __init__(self, node_id: str, *, validation_mode: str = "warn"):
         self.node_id = node_id
         self.logger = logging.getLogger(f"tagentacle.{node_id}")
         # Get Daemon URL (default tcp://127.0.0.1:19999)
@@ -77,6 +80,10 @@ class Node:
         self.services: Dict[str, Callable] = {}
         # request_id -> Future
         self.pending_requests: Dict[str, asyncio.Future] = {}
+
+        # Schema validation
+        self._schema_registry = SchemaRegistry()
+        self._validation_mode = validation_mode  # "strict" | "warn" | "off"
         
         # Auto-load secrets from TAGENTACLE_SECRETS_FILE if set
         self._secrets: Dict[str, str] = {}
@@ -90,6 +97,55 @@ class Node:
     def secrets(self) -> Dict[str, str]:
         """Secrets loaded from TAGENTACLE_SECRETS_FILE."""
         return self._secrets
+
+    @property
+    def schema_registry(self) -> SchemaRegistry:
+        """The node's schema registry for topic payload validation."""
+        return self._schema_registry
+
+    @property
+    def validation_mode(self) -> str:
+        """Current validation mode: 'strict', 'warn', or 'off'."""
+        return self._validation_mode
+
+    @validation_mode.setter
+    def validation_mode(self, mode: str) -> None:
+        if mode not in ("strict", "warn", "off"):
+            raise ValueError(f"Invalid validation_mode '{mode}'. Must be 'strict', 'warn', or 'off'.")
+        self._validation_mode = mode
+
+    def load_schemas(self, workspace_root: Optional[str] = None) -> int:
+        """Load topic schemas from workspace interface packages.
+
+        Scans for ``tagentacle.toml`` files with ``[topics]`` sections and
+        loads the referenced JSON Schema files.
+
+        Args:
+            workspace_root: Workspace root directory.  If ``None``, uses
+                ``find_workspace_root()`` to auto-detect.
+
+        Returns:
+            Number of schemas loaded.
+        """
+        if workspace_root is None:
+            workspace_root = find_workspace_root()
+        if workspace_root is None:
+            self.logger.debug("Cannot auto-detect workspace root for schema loading.")
+            return 0
+        return self._schema_registry.load_from_workspace(workspace_root)
+
+    def _validate_payload(self, topic: str, payload: Any, direction: str) -> None:
+        """Validate payload against topic schema according to validation mode."""
+        if self._validation_mode == "off":
+            return
+        error = self._schema_registry.validate(topic, payload)
+        if error is None:
+            return
+        msg = f"[{direction}] Topic '{topic}': {error}"
+        if self._validation_mode == "strict":
+            raise SchemaValidationError(topic, msg)
+        else:  # warn
+            self.logger.warning(f"Schema validation warning: {msg}")
 
     async def connect(self):
         """Connect to Tagentacle Daemon bus, send Register handshake, and register existing subscriptions and services."""
@@ -144,7 +200,12 @@ class Node:
         await self._send_json(msg)
 
     async def publish(self, topic: str, payload: Any):
-        """Publish message to a specified Topic."""
+        """Publish message to a specified Topic.
+
+        If a JSON Schema is registered for the topic and validation_mode
+        is not 'off', the payload is validated before sending.
+        """
+        self._validate_payload(topic, payload, "publish")
         msg = {
             "op": "publish",
             "topic": topic,
@@ -231,6 +292,11 @@ class Node:
         if op == "message":
             topic = msg.get("topic")
             if topic in self.subscribers:
+                # Validate incoming payload before delivering to subscribers
+                try:
+                    self._validate_payload(topic, msg.get("payload"), "subscribe")
+                except SchemaValidationError:
+                    return  # strict mode — drop the message
                 for callback in self.subscribers[topic]:
                     asyncio.create_task(callback(msg))
         
@@ -313,8 +379,8 @@ class LifecycleNode(Node):
                INACTIVE/ACTIVE -> shutdown() -> FINALIZED
     """
 
-    def __init__(self, node_id: str):
-        super().__init__(node_id)
+    def __init__(self, node_id: str, *, validation_mode: str = "warn"):
+        super().__init__(node_id, validation_mode=validation_mode)
         self._state = LifecycleState.UNCONFIGURED
         self._config: Dict[str, Any] = {}
         # Merge secrets into config for lifecycle access
@@ -404,12 +470,28 @@ class LifecycleNode(Node):
     async def bringup(self, config: Optional[Dict[str, Any]] = None):
         """Convenience: connect + configure + activate in one call.
         
+        Also auto-loads topic schemas from workspace interface packages.
+
         Typical usage for CLI-launched nodes:
             node = MyAgent("agent_1")
             await node.bringup({"api_key": "sk-...", "tools": ["search"]})
             await node.spin()
         """
+        # Apply validation_mode from config if provided
+        cfg = config or {}
+        if "validation_mode" in cfg:
+            self.validation_mode = cfg["validation_mode"]
+
         await self.connect()
+
+        # Auto-load schemas from workspace (best-effort, never fails bringup)
+        try:
+            ws = cfg.get("workspace_root") or find_workspace_root()
+            if ws:
+                self.load_schemas(ws)
+        except Exception as e:
+            self.logger.debug(f"Schema auto-load skipped: {e}")
+
         await self.configure(config)
         await self.activate()
 
@@ -450,6 +532,7 @@ class LifecycleNode(Node):
 
 # Provide simplified exports
 __all__ = ["Node", "LifecycleNode", "LifecycleState",
+           "SchemaRegistry", "SchemaValidationError",
            "load_pkg_toml", "discover_packages", "find_workspace_root"]
 
 

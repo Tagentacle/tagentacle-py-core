@@ -1,10 +1,13 @@
 [project]
 name = "tagentacle-py-core"
-version = "0.1.0"
-description = "Tagentacle Python Core SDK — Node, LifecycleNode, and package utilities"
+version = "0.3.0"
+description = "Tagentacle Python Core SDK — Node, LifecycleNode, SchemaRegistry, and package utilities"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
+
+[project.optional-dependencies]
+validation = ["jsonschema>=4.0"]
 
 [build-system]
 requires = ["hatchling"]
