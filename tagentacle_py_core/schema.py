@@ -43,7 +43,8 @@ logger = logging.getLogger("tagentacle.schema")
 
 try:
     import jsonschema as _jsonschema
-    from jsonschema import Draft7Validator, ValidationError as _ValidationError
+    from jsonschema import Draft7Validator  # noqa: F401
+    from jsonschema import ValidationError as _ValidationError  # noqa: F401
 
     _HAS_JSONSCHEMA = True
 except ImportError:
@@ -84,6 +85,7 @@ class SchemaValidationError(Exception):
 # Schema Registry
 # ---------------------------------------------------------------------------
 
+
 class SchemaRegistry:
     """Discovers JSON Schemas from workspace packages and validates payloads.
 
@@ -102,7 +104,9 @@ class SchemaRegistry:
 
     def __init__(self) -> None:
         self._schemas: Dict[str, dict] = {}  # topic -> raw schema dict
-        self._validators: Dict[str, Any] = {}  # topic -> Draft7Validator (if jsonschema available)
+        self._validators: Dict[
+            str, Any
+        ] = {}  # topic -> Draft7Validator (if jsonschema available)
 
     # -- Registration --
 
@@ -148,8 +152,14 @@ class SchemaRegistry:
         loaded = 0
         workspace_root = os.path.abspath(workspace_root)
         skip_dirs = {
-            ".venv", "__pycache__", "target", "node_modules",
-            "install", ".git", "build", "dist",
+            ".venv",
+            "__pycache__",
+            "target",
+            "node_modules",
+            "install",
+            ".git",
+            "build",
+            "dist",
         }
 
         def _scan(directory: str, depth: int) -> None:
@@ -175,8 +185,7 @@ class SchemaRegistry:
         _scan(workspace_root, 0)
         if loaded:
             logger.info(
-                f"Loaded {loaded} topic schema(s) from workspace "
-                f"'{workspace_root}'"
+                f"Loaded {loaded} topic schema(s) from workspace '{workspace_root}'"
             )
         return loaded
 
@@ -215,7 +224,7 @@ class SchemaRegistry:
                     continue
                 # Match [topics."/some/topic"]
                 if line.startswith("[topics."):
-                    stripped = line[len("[topics."):]
+                    stripped = line[len("[topics.") :]
                     stripped = stripped.rstrip("]").strip().strip('"').strip("'")
                     current_topic = stripped
                     schema_value = None
@@ -267,8 +276,7 @@ class SchemaRegistry:
                 loaded += 1
             except Exception as e:
                 logger.warning(
-                    f"Failed to load schema '{schema_abs}' "
-                    f"for topic '{topic}': {e}"
+                    f"Failed to load schema '{schema_abs}' for topic '{topic}': {e}"
                 )
         return loaded
 
@@ -302,7 +310,11 @@ class SchemaRegistry:
 
         # Return the first (most relevant) error
         err = errors[0]
-        path = ".".join(str(p) for p in err.absolute_path) if err.absolute_path else "(root)"
+        path = (
+            ".".join(str(p) for p in err.absolute_path)
+            if err.absolute_path
+            else "(root)"
+        )
         return f"{err.message} (at {path})"
 
     def validate_or_raise(

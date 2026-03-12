@@ -1,4 +1,4 @@
-"""  
+"""
 Tagentacle Python Core SDK — Node, LifecycleNode, and package utilities.
 
 This is the zero-dependency core of the Tagentacle Python SDK.
@@ -56,7 +56,7 @@ def _load_secrets_file(path: str) -> Dict[str, str]:
 
 class Node:
     """Simple API: Lightweight node for general-purpose programs.
-    
+
     Provides publish(), subscribe(), service(), call_service() for quick
     integration with the Tagentacle bus. No lifecycle management.
     """
@@ -70,7 +70,7 @@ class Node:
             url = url[6:]
         self.host, port_str = url.split(":")
         self.port = int(port_str)
-        
+
         self.reader = None
         self.writer = None
         self._connected = False
@@ -84,14 +84,16 @@ class Node:
         # Schema validation
         self._schema_registry = SchemaRegistry()
         self._validation_mode = validation_mode  # "strict" | "warn" | "off"
-        
+
         # Auto-load secrets from TAGENTACLE_SECRETS_FILE if set
         self._secrets: Dict[str, str] = {}
         secrets_path = os.environ.get("TAGENTACLE_SECRETS_FILE", "")
         if secrets_path:
             self._secrets = _load_secrets_file(secrets_path)
             if self._secrets:
-                self.logger.info(f"Loaded {len(self._secrets)} secret(s) from {secrets_path}")
+                self.logger.info(
+                    f"Loaded {len(self._secrets)} secret(s) from {secrets_path}"
+                )
 
     @property
     def secrets(self) -> Dict[str, str]:
@@ -111,7 +113,9 @@ class Node:
     @validation_mode.setter
     def validation_mode(self, mode: str) -> None:
         if mode not in ("strict", "warn", "off"):
-            raise ValueError(f"Invalid validation_mode '{mode}'. Must be 'strict', 'warn', or 'off'.")
+            raise ValueError(
+                f"Invalid validation_mode '{mode}'. Must be 'strict', 'warn', or 'off'."
+            )
         self._validation_mode = mode
 
     def load_schemas(self, workspace_root: Optional[str] = None) -> int:
@@ -149,18 +153,22 @@ class Node:
 
     async def connect(self):
         """Connect to Tagentacle Daemon bus, send Register handshake, and register existing subscriptions and services."""
-        self.logger.info(f"Connecting to Tagentacle Daemon at {self.host}:{self.port}...")
-        self.reader, self.writer = await asyncio.open_connection(self.host, self.port, limit=4 * 1024 * 1024)  # 4 MB buffer for large messages
+        self.logger.info(
+            f"Connecting to Tagentacle Daemon at {self.host}:{self.port}..."
+        )
+        self.reader, self.writer = await asyncio.open_connection(
+            self.host, self.port, limit=4 * 1024 * 1024
+        )  # 4 MB buffer for large messages
         self._connected = True
         self.logger.info(f"Node '{self.node_id}' connected.")
 
         # Send Register handshake first
         await self._send_json({"op": "register", "node_id": self.node_id})
-        
+
         # Batch register pre-defined subscriptions
         for topic in self.subscribers.keys():
             await self._register_subscription(topic)
-        
+
         # Batch register pre-defined services
         for service in self.services.keys():
             await self._register_service(service)
@@ -180,6 +188,7 @@ class Node:
 
     def subscribe(self, topic: str):
         """Decorator: Subscribe to a specified Topic and register an async callback."""
+
         def decorator(func: Callable):
             if topic not in self.subscribers:
                 self.subscribers[topic] = []
@@ -188,15 +197,12 @@ class Node:
                     asyncio.create_task(self._register_subscription(topic))
             self.subscribers[topic].append(func)
             return func
+
         return decorator
 
     async def _register_subscription(self, topic: str):
         """Send subscription message to Daemon."""
-        msg = {
-            "op": "subscribe",
-            "topic": topic,
-            "node_id": self.node_id
-        }
+        msg = {"op": "subscribe", "topic": topic, "node_id": self.node_id}
         await self._send_json(msg)
 
     async def publish(self, topic: str, payload: Any):
@@ -210,12 +216,13 @@ class Node:
             "op": "publish",
             "topic": topic,
             "sender": self.node_id,
-            "payload": payload
+            "payload": payload,
         }
         await self._send_json(msg)
 
     def service(self, service_name: str):
         """Decorator: Provide a specified Service and register an async callback."""
+
         def decorator(func: Callable):
             if service_name not in self.services:
                 self.services[service_name] = func
@@ -223,6 +230,7 @@ class Node:
                 if self._connected:
                     asyncio.create_task(self._register_service(service_name))
             return func
+
         return decorator
 
     async def _register_service(self, service_name: str):
@@ -230,29 +238,33 @@ class Node:
         msg = {
             "op": "advertise_service",
             "service": service_name,
-            "node_id": self.node_id
+            "node_id": self.node_id,
         }
         await self._send_json(msg)
 
-    async def call_service(self, service_name: str, payload: Any, timeout: float = 30.0):
+    async def call_service(
+        self, service_name: str, payload: Any, timeout: float = 30.0
+    ):
         """Call service and wait for response with timeout."""
         request_id = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self.pending_requests[request_id] = future
-        
+
         msg = {
             "op": "call_service",
             "service": service_name,
             "request_id": request_id,
             "payload": payload,
-            "caller_id": self.node_id
+            "caller_id": self.node_id,
         }
         await self._send_json(msg)
-        
+
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
-            self.logger.error(f"Service call '{service_name}' timed out after {timeout}s")
+            self.logger.error(
+                f"Service call '{service_name}' timed out after {timeout}s"
+            )
             raise
         finally:
             self.pending_requests.pop(request_id, None)
@@ -267,14 +279,16 @@ class Node:
     async def spin(self):
         """Keep running and listen for all push messages from the bus."""
         if not self.reader:
-            raise RuntimeError("Node is not connected. Call await node.connect() first.")
-        
+            raise RuntimeError(
+                "Node is not connected. Call await node.connect() first."
+            )
+
         try:
             while self._connected and not self.reader.at_eof():
                 line = await self.reader.readline()
                 if not line:
                     break
-                
+
                 try:
                     msg = json.loads(line.decode())
                     await self._dispatch(msg)
@@ -288,7 +302,7 @@ class Node:
     async def _dispatch(self, msg: Dict):
         """Dispatch an inbound message to the appropriate handler."""
         op = msg.get("op")
-        
+
         if op == "message":
             topic = msg.get("topic")
             if topic in self.subscribers:
@@ -299,25 +313,25 @@ class Node:
                     return  # strict mode — drop the message
                 for callback in self.subscribers[topic]:
                     asyncio.create_task(callback(msg))
-        
+
         elif op == "call_service":
             service_name = msg.get("service")
             if service_name in self.services:
                 asyncio.create_task(self._handle_service_call(msg))
-        
+
         elif op == "service_response":
             request_id = msg.get("request_id")
             if request_id in self.pending_requests:
                 future = self.pending_requests[request_id]
                 if not future.done():
                     future.set_result(msg.get("payload"))
-        
+
         elif op == "ping":
             # Respond to Daemon heartbeat
             await self._send_json({"op": "pong", "node_id": self.node_id})
-        
+
         elif op == "register_ack":
-            self.logger.debug(f"Register acknowledged by Daemon.")
+            self.logger.debug("Register acknowledged by Daemon.")
 
     async def _handle_service_call(self, msg: Dict):
         """Handle inbound service requests."""
@@ -325,7 +339,7 @@ class Node:
         request_id = msg.get("request_id")
         caller_id = msg.get("caller_id")
         payload = msg.get("payload")
-        
+
         handler = self.services.get(service_name)
         if handler:
             try:
@@ -334,14 +348,14 @@ class Node:
                     response_payload = await handler(payload)
                 else:
                     response_payload = handler(payload)
-                
+
                 # Send back the response
                 resp = {
                     "op": "service_response",
                     "service": service_name,
                     "request_id": request_id,
                     "payload": response_payload,
-                    "caller_id": caller_id
+                    "caller_id": caller_id,
                 }
                 await self._send_json(resp)
             except Exception as e:
@@ -352,15 +366,17 @@ class Node:
                     "service": service_name,
                     "request_id": request_id,
                     "payload": {"error": str(e)},
-                    "caller_id": caller_id
+                    "caller_id": caller_id,
                 }
                 await self._send_json(resp)
 
 
 # --- Lifecycle Node (Node API) ---
 
+
 class LifecycleState(Enum):
     """Node lifecycle states, inspired by ROS 2 managed nodes."""
+
     UNCONFIGURED = "unconfigured"
     INACTIVE = "inactive"
     ACTIVE = "active"
@@ -369,11 +385,11 @@ class LifecycleState(Enum):
 
 class LifecycleNode(Node):
     """Node API: Full lifecycle-managed node for Agent development.
-    
-    Extends Node with lifecycle hooks (on_configure, on_activate, 
+
+    Extends Node with lifecycle hooks (on_configure, on_activate,
     on_deactivate, on_shutdown) and Bringup config injection support.
     Suitable for CLI-launched nodes accepting centralized configuration.
-    
+
     Lifecycle: UNCONFIGURED -> configure() -> INACTIVE -> activate() -> ACTIVE
                                                        <- deactivate() <-
                INACTIVE/ACTIVE -> shutdown() -> FINALIZED
@@ -401,10 +417,10 @@ class LifecycleNode(Node):
         """Transition: UNCONFIGURED -> INACTIVE. Calls on_configure()."""
         if self._state != LifecycleState.UNCONFIGURED:
             raise RuntimeError(f"Cannot configure from state {self._state.value}")
-        
+
         self._config = config or {}
         self.logger.info(f"[{self.node_id}] Configuring...")
-        
+
         try:
             result = self.on_configure(self._config)
             if asyncio.iscoroutine(result):
@@ -412,7 +428,7 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_configure() failed: {e}")
             raise
-        
+
         self._state = LifecycleState.INACTIVE
         self.logger.info(f"[{self.node_id}] State -> INACTIVE")
 
@@ -420,9 +436,9 @@ class LifecycleNode(Node):
         """Transition: INACTIVE -> ACTIVE. Calls on_activate()."""
         if self._state != LifecycleState.INACTIVE:
             raise RuntimeError(f"Cannot activate from state {self._state.value}")
-        
+
         self.logger.info(f"[{self.node_id}] Activating...")
-        
+
         try:
             result = self.on_activate()
             if asyncio.iscoroutine(result):
@@ -430,7 +446,7 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_activate() failed: {e}")
             raise
-        
+
         self._state = LifecycleState.ACTIVE
         self.logger.info(f"[{self.node_id}] State -> ACTIVE")
 
@@ -438,9 +454,9 @@ class LifecycleNode(Node):
         """Transition: ACTIVE -> INACTIVE. Calls on_deactivate()."""
         if self._state != LifecycleState.ACTIVE:
             raise RuntimeError(f"Cannot deactivate from state {self._state.value}")
-        
+
         self.logger.info(f"[{self.node_id}] Deactivating...")
-        
+
         try:
             result = self.on_deactivate()
             if asyncio.iscoroutine(result):
@@ -448,28 +464,28 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_deactivate() failed: {e}")
             raise
-        
+
         self._state = LifecycleState.INACTIVE
         self.logger.info(f"[{self.node_id}] State -> INACTIVE")
 
     async def shutdown(self):
         """Transition: any -> FINALIZED. Calls on_shutdown()."""
         self.logger.info(f"[{self.node_id}] Shutting down...")
-        
+
         try:
             result = self.on_shutdown()
             if asyncio.iscoroutine(result):
                 await result
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_shutdown() failed: {e}")
-        
+
         self._state = LifecycleState.FINALIZED
         await self.disconnect()
         self.logger.info(f"[{self.node_id}] State -> FINALIZED")
 
     async def bringup(self, config: Optional[Dict[str, Any]] = None):
         """Convenience: connect + configure + activate in one call.
-        
+
         Also auto-loads topic schemas from workspace interface packages.
 
         Typical usage for CLI-launched nodes:
@@ -499,7 +515,7 @@ class LifecycleNode(Node):
 
     def on_configure(self, config: Dict[str, Any]):
         """Called during UNCONFIGURED -> INACTIVE transition.
-        
+
         Use this to initialize resources, load API keys from config,
         set up tool allow-lists, etc. Can be async.
         """
@@ -507,7 +523,7 @@ class LifecycleNode(Node):
 
     def on_activate(self):
         """Called during INACTIVE -> ACTIVE transition.
-        
+
         Use this to register subscriptions, start background tasks, etc.
         Can be async.
         """
@@ -515,7 +531,7 @@ class LifecycleNode(Node):
 
     def on_deactivate(self):
         """Called during ACTIVE -> INACTIVE transition.
-        
+
         Use this to pause processing, unsubscribe from topics, etc.
         Can be async.
         """
@@ -523,7 +539,7 @@ class LifecycleNode(Node):
 
     def on_shutdown(self):
         """Called during any -> FINALIZED transition.
-        
+
         Use this for cleanup: close file handles, save state, etc.
         Can be async.
         """
@@ -531,23 +547,31 @@ class LifecycleNode(Node):
 
 
 # Provide simplified exports
-__all__ = ["Node", "LifecycleNode", "LifecycleState",
-           "SchemaRegistry", "SchemaValidationError",
-           "load_pkg_toml", "discover_packages", "find_workspace_root"]
+__all__ = [
+    "Node",
+    "LifecycleNode",
+    "LifecycleState",
+    "SchemaRegistry",
+    "SchemaValidationError",
+    "load_pkg_toml",
+    "discover_packages",
+    "find_workspace_root",
+]
 
 
 # --- Bringup Utilities ---
 
+
 def load_pkg_toml(pkg_dir: str) -> Dict[str, Any]:
     """Load and parse a tagentacle.toml from a package directory.
-    
+
     Returns a dict with sections as nested dicts:
         {"package": {"name": "...", "version": "..."}, "entry_points": {...}, ...}
     """
     toml_path = os.path.join(pkg_dir, "tagentacle.toml")
     if not os.path.isfile(toml_path):
         raise FileNotFoundError(f"No tagentacle.toml in {pkg_dir}")
-    
+
     try:
         import tomllib
     except ImportError:
@@ -556,7 +580,7 @@ def load_pkg_toml(pkg_dir: str) -> Dict[str, Any]:
         except ImportError:
             # Fallback: simple section + key=value parser
             return _parse_toml_fallback(toml_path)
-    
+
     with open(toml_path, "rb") as f:
         return tomllib.load(f)
 
@@ -582,7 +606,11 @@ def _parse_toml_fallback(path: str) -> Dict[str, Any]:
                 # Try to parse arrays
                 if v.startswith("[") and v.endswith("]"):
                     inner = v[1:-1]
-                    v = [x.strip().strip('"').strip("'") for x in inner.split(",") if x.strip()]
+                    v = [
+                        x.strip().strip('"').strip("'")
+                        for x in inner.split(",")
+                        if x.strip()
+                    ]
                 if section:
                     result.setdefault(section, {})[k] = v
                 else:
@@ -592,13 +620,13 @@ def _parse_toml_fallback(path: str) -> Dict[str, Any]:
 
 def discover_packages(root: str, max_depth: int = 5) -> List[Dict[str, Any]]:
     """Discover all Tagentacle packages under a root directory.
-    
+
     Returns a list of dicts with keys: name, path, has_pyproject, has_venv.
     """
     packages = []
     root = os.path.abspath(root)
     _skip_dirs = {".venv", "__pycache__", "target", "node_modules", "install", ".git"}
-    
+
     def _scan(directory: str, depth: int):
         if depth > max_depth:
             return
@@ -606,36 +634,45 @@ def discover_packages(root: str, max_depth: int = 5) -> List[Dict[str, Any]]:
         if os.path.isfile(toml):
             info = load_pkg_toml(directory)
             pkg_name = info.get("package", {}).get("name", os.path.basename(directory))
-            packages.append({
-                "name": pkg_name,
-                "path": directory,
-                "has_pyproject": os.path.isfile(os.path.join(directory, "pyproject.toml")),
-                "has_venv": os.path.isdir(os.path.join(directory, ".venv")),
-            })
+            packages.append(
+                {
+                    "name": pkg_name,
+                    "path": directory,
+                    "has_pyproject": os.path.isfile(
+                        os.path.join(directory, "pyproject.toml")
+                    ),
+                    "has_venv": os.path.isdir(os.path.join(directory, ".venv")),
+                }
+            )
             return  # Don't recurse into packages
-        
+
         try:
             for entry in os.scandir(directory):
-                if entry.is_dir() and entry.name not in _skip_dirs and not entry.name.startswith("."):
+                if (
+                    entry.is_dir()
+                    and entry.name not in _skip_dirs
+                    and not entry.name.startswith(".")
+                ):
                     _scan(entry.path, depth + 1)
         except PermissionError:
             pass
-    
+
     _scan(root, 0)
     return packages
 
 
 def find_workspace_root(start: str = ".") -> Optional[str]:
     """Walk up from `start` to find the workspace root.
-    
+
     The workspace root is the directory containing both `tagentacle/`
     (Rust daemon) and `tagentacle-py/` (Python SDK), or a directory
     with an `install/` folder generated by `tagentacle setup dep --all`.
     """
     directory = os.path.abspath(start)
     for _ in range(10):
-        if (os.path.isdir(os.path.join(directory, "tagentacle")) and
-            os.path.isdir(os.path.join(directory, "tagentacle-py"))):
+        if os.path.isdir(os.path.join(directory, "tagentacle")) and os.path.isdir(
+            os.path.join(directory, "tagentacle-py")
+        ):
             return directory
         if os.path.isdir(os.path.join(directory, "install")):
             return directory
