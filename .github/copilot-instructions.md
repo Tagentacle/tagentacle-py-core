@@ -65,6 +65,17 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 - `chore:` — tooling, CI, version bumps
 - `ci:` — CI configuration changes
 
+## E2E Testing
+
+End-to-end integration tests live in a separate repo: [test-bringup](https://github.com/Tagentacle/test-bringup)
+
+The E2E suite imports `tagentacle-py-core` and tests it against a real daemon. When you make SDK changes,
+run the full E2E suite to catch integration regressions:
+
+```bash
+cd ../test-bringup && pytest -v
+```
+
 ## Architecture Notes
 
 - `Node` is the base communication primitive — pub/sub + service RPC over TCP JSON Lines
