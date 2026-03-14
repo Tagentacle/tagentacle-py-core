@@ -413,6 +413,23 @@ class LifecycleNode(Node):
         """Configuration injected during configure phase."""
         return self._config
 
+    async def _publish_lifecycle_event(self, prev_state: str, new_state: str):
+        """Best-effort publish lifecycle transition to /tagentacle/node_events."""
+        if not self._connected:
+            return
+        try:
+            await self.publish(
+                "/tagentacle/node_events",
+                {
+                    "event": "lifecycle_transition",
+                    "node_id": self.node_id,
+                    "prev_state": prev_state,
+                    "state": new_state,
+                },
+            )
+        except Exception:
+            pass  # best-effort: never break state transitions
+
     async def configure(self, config: Optional[Dict[str, Any]] = None):
         """Transition: UNCONFIGURED -> INACTIVE. Calls on_configure()."""
         if self._state != LifecycleState.UNCONFIGURED:
@@ -431,6 +448,7 @@ class LifecycleNode(Node):
 
         self._state = LifecycleState.INACTIVE
         self.logger.info(f"[{self.node_id}] State -> INACTIVE")
+        await self._publish_lifecycle_event("unconfigured", "inactive")
 
     async def activate(self):
         """Transition: INACTIVE -> ACTIVE. Calls on_activate()."""
@@ -449,6 +467,7 @@ class LifecycleNode(Node):
 
         self._state = LifecycleState.ACTIVE
         self.logger.info(f"[{self.node_id}] State -> ACTIVE")
+        await self._publish_lifecycle_event("inactive", "active")
 
     async def deactivate(self):
         """Transition: ACTIVE -> INACTIVE. Calls on_deactivate()."""
@@ -467,6 +486,7 @@ class LifecycleNode(Node):
 
         self._state = LifecycleState.INACTIVE
         self.logger.info(f"[{self.node_id}] State -> INACTIVE")
+        await self._publish_lifecycle_event("active", "inactive")
 
     async def shutdown(self):
         """Transition: any -> FINALIZED. Calls on_shutdown()."""
@@ -479,7 +499,9 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_shutdown() failed: {e}")
 
+        prev_state = self._state.value
         self._state = LifecycleState.FINALIZED
+        await self._publish_lifecycle_event(prev_state, "finalized")
         await self.disconnect()
         self.logger.info(f"[{self.node_id}] State -> FINALIZED")
 

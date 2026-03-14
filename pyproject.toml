@@ -12,3 +12,7 @@ validation = ["jsonschema>=4.0"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.tagentacle.test]
+requires = []
+extras = ["validation"]
