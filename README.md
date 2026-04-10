@@ -87,7 +87,7 @@ Tagentacle borrows the multi-layer naming pattern from **ROS 2**, adapted for th
 
 | Layer | Convention | Example | ROS 2 Analogy |
 |-------|-----------|---------|---------------|
-| **Repo directory** | `kebab-case` | `python-sdk-core/` | ROS 2 uses `snake_case`; we follow GitHub convention |
+| **Repo directory** | `kebab-case` | `tagentacle-py-core/` | ROS 2 uses `snake_case`; we follow GitHub convention |
 | **`tagentacle.toml` name** | `snake_case` | `tagentacle_py_core` | `package.xml` `<name>` |
 | **Python module dir** | `snake_case` (= toml name) | `tagentacle_py_core/` | `import turtlesim` |
 | **`pyproject.toml` name** (pip) | `kebab-case` | `tagentacle-py-core` | `ros-jazzy-turtlesim` (apt) |

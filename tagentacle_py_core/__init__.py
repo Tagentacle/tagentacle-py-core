@@ -7,6 +7,7 @@ Provides:
   - LifecycleNode: Full lifecycle-managed node for Agent development.
   - SchemaRegistry: Modular JSON Schema validation for topic payloads.
   - Package utilities: load_pkg_toml, discover_packages, find_workspace_root.
+  - Inbox: Agent-local message buffer with per-topic attention levels (Q27).
 """
 
 import asyncio
@@ -18,6 +19,7 @@ from enum import Enum
 from typing import Callable, Dict, Any, List, Optional
 
 from tagentacle_py_core.schema import SchemaRegistry, SchemaValidationError
+from tagentacle_py_core.inbox import Inbox, TopicMode
 
 
 def _load_secrets_file(path: str) -> Dict[str, str]:
@@ -575,6 +577,8 @@ __all__ = [
     "LifecycleState",
     "SchemaRegistry",
     "SchemaValidationError",
+    "Inbox",
+    "TopicMode",
     "load_pkg_toml",
     "discover_packages",
     "find_workspace_root",
