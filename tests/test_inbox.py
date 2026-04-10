@@ -45,7 +45,11 @@ def test_mixed_modes():
     assert inbox.pending == 3
 
     msgs = inbox.drain()
-    assert [m["topic"] for m in msgs] == ["/chat/input", "/memory/latest", "/chat/input"]
+    assert [m["topic"] for m in msgs] == [
+        "/chat/input",
+        "/memory/latest",
+        "/chat/input",
+    ]
 
 
 def test_default_mode_collect():
