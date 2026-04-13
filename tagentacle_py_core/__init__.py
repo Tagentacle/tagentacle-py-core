@@ -440,6 +440,9 @@ class LifecycleNode(Node):
         self._config = config or {}
         self.logger.info(f"[{self.node_id}] Configuring...")
 
+        services_before = set(self.services.keys())
+        subs_before = set(self.subscribers.keys())
+
         try:
             result = self.on_configure(self._config)
             if asyncio.iscoroutine(result):
@@ -447,6 +450,13 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_configure() failed: {e}")
             raise
+
+        # Register any new services/subscriptions added during on_configure
+        if self._connected:
+            for svc in set(self.services.keys()) - services_before:
+                await self._register_service(svc)
+            for topic in set(self.subscribers.keys()) - subs_before:
+                await self._register_subscription(topic)
 
         self._state = LifecycleState.INACTIVE
         self.logger.info(f"[{self.node_id}] State -> INACTIVE")
@@ -459,6 +469,9 @@ class LifecycleNode(Node):
 
         self.logger.info(f"[{self.node_id}] Activating...")
 
+        services_before = set(self.services.keys())
+        subs_before = set(self.subscribers.keys())
+
         try:
             result = self.on_activate()
             if asyncio.iscoroutine(result):
@@ -466,6 +479,13 @@ class LifecycleNode(Node):
         except Exception as e:
             self.logger.error(f"[{self.node_id}] on_activate() failed: {e}")
             raise
+
+        # Register any new services/subscriptions added during on_activate
+        if self._connected:
+            for svc in set(self.services.keys()) - services_before:
+                await self._register_service(svc)
+            for topic in set(self.subscribers.keys()) - subs_before:
+                await self._register_subscription(topic)
 
         self._state = LifecycleState.ACTIVE
         self.logger.info(f"[{self.node_id}] State -> ACTIVE")
